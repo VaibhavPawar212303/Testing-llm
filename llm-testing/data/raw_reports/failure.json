@@ -1,0 +1,7 @@
+{
+  "test_name": "Login Validation",
+  "status": "failed",
+  "error_message": "Timeout 30000ms exceeded while waiting for selector 'text=Welcome'",
+  "step": "Check login success message",
+  "browser": "chromium"
+}
