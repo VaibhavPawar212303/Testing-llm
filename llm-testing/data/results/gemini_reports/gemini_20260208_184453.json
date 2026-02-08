@@ -1,0 +1,13 @@
+{
+  "timestamp": "20260208_184453",
+  "model": "gemma-3-4b-it",
+  "endpoint": "Gemini API: gemma-3-4b-it",
+  "generation_time": {
+    "start": "2026-02-08T18:44:50.965853",
+    "end": "2026-02-08T18:44:53.181617",
+    "duration_seconds": 2.215764
+  },
+  "prompt": "Given the text, breakdown and generate a list of statements presented. Ambiguous statements and single words can be considered as statements, but only if outside of a coherent statement.\n\nExample:\nExample text: \nOur new laptop model features a high-resolution Retina display for crystal-clear visuals. It also includes a fast-charging battery, giving you up to 12 hours of usage on a single charge. For security, we’ve added fingerprint authentication and an encrypted SSD. Plus, every purchase comes with a one-year warranty and 24/7 customer support.\n\n\n\n{\n    \"statements\": [\n        \"The new laptop model has a high-resolution Retina display.\",\n        \"It includes a fast-charging battery with up to 12 hours of usage.\",\n        \"Security features include fingerprint authentication and an encrypted SSD.\",\n        \"Every purchase comes with a one-year warranty.\",\n        \"24/7 customer support is included.\"\n    ]\n}\n===== END OF EXAMPLE ======\n        \n**\nIMPORTANT: Please make sure to only return in valid and parseable JSON format, with the \"statements\" key mapping to a list of strings. No words or explanation are needed. Ensure all strings are closed appropriately. Repair any invalid JSON before you output it.\n**\n\nText:\nPlease provide the test failure details, including:\n\n1. The browser version (e.g., Chrome 91)\n2. The specific test code that failed\n3. Any error messages or stack traces\n\nWith this information, I'll be able to analyze the Playwright test failure and provide a detailed summary, root cause, recommendation, severity, and affected area for you to review.\n\nJSON:\n",
+  "response": "{\n    \"statements\": [\n        \"Please provide the test failure details.\",\n        \"The browser version should be included.\",\n        \"The specific test code that failed should be included.\",\n        \"Error messages or stack traces should be included.\",\n        \"I'll be able to analyze the Playwright test failure.\",\n        \"A detailed summary will be provided.\",\n        \"The root cause will be identified.\",\n        \"A recommendation will be given.\",\n        \"The severity of the failure will be assessed.\",\n        \"The affected area will be determined.\"\n    ]\n}",
+  "metrics": {}
+}
