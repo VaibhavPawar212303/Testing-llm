@@ -1,5 +1,6 @@
 import pytest
 import os
+import time
 from dotenv import load_dotenv
 from deepeval import assert_test, log_hyperparameters
 from deepeval.test_case import LLMTestCase
@@ -32,6 +33,9 @@ def test_llm_quality_gate():
         # 4. DeepEval Evaluation
         assert_test(test_case, [metric])
     finally:
+        # 🔥 FIX: Wait for DeepEval to finish calculating score asynchronously
+        time.sleep(0.5)  # 500ms delay to let DeepEval complete score calculation
+        
         # 5. Combined Build Result (Packaging everything)
         print("\n📦 Finalizing Build Results...")
         generate_build_result(SUT, JUDGE, [metric])
