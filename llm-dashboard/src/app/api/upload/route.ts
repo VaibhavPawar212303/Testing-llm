@@ -29,69 +29,128 @@ export async function POST(request: NextRequest) {
     }
 
     const text = await file.text();
-    const data = JSON.parse(text);
+    const buildData = JSON.parse(text);
 
-    // Transform DeepEval output to include pipeline tracking
+    // Extract pipeline data from build result structure
+    const sutData = buildData.pipeline?.student_sut || {};
+    const judgeData = buildData.pipeline?.teacher_judge || {};
+    const analyticsData = buildData.pipeline?.deepeval_analytics?.[0] || {};
+    const envData = buildData.environment || {};
+
+    // Transform build result to frontend format
     const enrichedData = {
+      // Basic info
       date: new Date().toLocaleDateString(),
       fullDate: new Date().toLocaleString(),
-      agent: data.test_case?.model || 'llama3.2:1b',
-      judge: data.evaluation_model || 'gemini-1.5-flash',
-      score: data.score || 0,
-      reason: data.reason || '',
-      sutOutput: data.test_case?.actual_output || '',
-      metrics: data.metrics || null,
+      buildId: buildData.build_id,
+      timestamp: buildData.timestamp,
+      overallStatus: buildData.overall_status,
 
+      // Agent (SUT) info
+      agent: sutData.model || 'llama3.2:1b',
+      agentDuration: sutData.duration_seconds || 0,
+      
+      // Judge info
+      judge: judgeData.model || 'gemini',
+      judgeDuration: judgeData.duration_seconds || 0,
+
+      // Scores and evaluation
+      score: analyticsData.score || 0,
+      threshold: analyticsData.threshold || 0.6,
+      passed: analyticsData.passed || false,
+      reason: analyticsData.reason || '',
+      metricName: analyticsData.metric_name || 'AnswerRelevancyMetric',
+      error: analyticsData.error || null,
+
+      // SUT Output
+      sutOutput: sutData.response || '',
+      sutPrompt: sutData.prompt || '',
+
+      // Judge Output
+      judgeOutput: judgeData.response || '',
+      judgePrompt: judgeData.prompt || '',
+
+      // Statements and Verdicts
+      statements: analyticsData.pipeline_flow?.judge_statements || [],
+      verdicts: analyticsData.pipeline_flow?.judge_verdicts || [],
+
+      // Hardware metrics
+      metrics: sutData.metrics || null,
+      judgeMetrics: judgeData.metrics || {},
+
+      // Complete pipeline breakdown
       pipeline: {
-        deepeval_input: data.test_case?.input,
-
-        ollama_request: {
-          model: data.test_case?.model,
-          prompt: data.test_case?.input,
-          timestamp: data.timestamp,
-        },
-        ollama_response: {
-          analysis: data.test_case?.actual_output,
-          success: true,
-        },
-        ollama_metrics: data.metrics,
-
-        gemini_request: {
-          model: data.evaluation_model,
-          prompt: `Evaluate: ${data.test_case?.actual_output}`,
-          threshold: data.threshold,
-        },
-        gemini_response: {
-          score: data.score,
-          reason: data.reason,
-          statements: data.statements,
-        },
-        gemini_metrics: {
-          duration: data.evaluation_time,
+        // 1. SUT (Student) Phase
+        sut_phase: {
+          model: sutData.model,
+          prompt: sutData.prompt,
+          response: sutData.response,
+          duration_seconds: sutData.duration_seconds,
+          metrics: sutData.metrics,
+          thought_process: sutData.thought_process || '',
         },
 
-        deepeval_result: {
-          score: data.score,
-          status: data.score >= data.threshold ? 'PASSED' : 'FAILED',
-          threshold: data.threshold,
-          metric: 'Answer Relevancy',
+        // 2. Judge (Teacher) Phase
+        judge_phase: {
+          model: judgeData.model,
+          prompt: judgeData.prompt,
+          response: judgeData.response,
+          duration_seconds: judgeData.duration_seconds,
+          metrics: judgeData.metrics,
+        },
+
+        // 3. DeepEval Analytics Phase
+        deepeval_phase: {
+          metric_name: analyticsData.metric_name,
+          score: analyticsData.score,
+          threshold: analyticsData.threshold,
+          passed: analyticsData.passed,
+          reason: analyticsData.reason,
+          success: analyticsData.success,
+          error: analyticsData.error,
+          
+          // Pipeline flow details
+          statements: analyticsData.pipeline_flow?.judge_statements || [],
+          verdicts: analyticsData.pipeline_flow?.judge_verdicts || [],
+          
+          // Verdict breakdown
+          verdict_breakdown: {
+            yes: analyticsData.pipeline_flow?.judge_verdicts?.filter((v: any) => v.verdict === 'yes').length || 0,
+            no: analyticsData.pipeline_flow?.judge_verdicts?.filter((v: any) => v.verdict === 'no').length || 0,
+            idk: analyticsData.pipeline_flow?.judge_verdicts?.filter((v: any) => v.verdict === 'idk').length || 0,
+            total: analyticsData.pipeline_flow?.judge_verdicts?.length || 0,
+          },
+        },
+
+        // 4. Environment info
+        environment: {
+          os: envData.os,
+          sut_hardware: envData.sut_hardware,
         },
       },
+
+      // Raw build data for reference
+      raw_build: buildData,
     };
 
     await saveTestRun(enrichedData);
 
-    return NextResponse.json({ success: true, id: Date.now() });
+    return NextResponse.json({ 
+      success: true, 
+      id: Date.now(),
+      buildId: buildData.build_id,
+      status: buildData.overall_status,
+    });
   } catch (error) {
     console.error('Upload error:', error);
     return NextResponse.json(
-      { error: 'Failed to process upload' },
+      { error: 'Failed to process upload', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }
 }
 
-// Optional: GET route to retrieve all saved test runs from results folder
+// GET route to retrieve all saved test runs from results folder
 export async function GET() {
   try {
     await mkdir(RESULTS_DIR, { recursive: true });
@@ -105,11 +164,12 @@ export async function GET() {
       })
     );
 
-    // Sort by id (timestamp) ascending
-    results.sort((a, b) => (a.id || 0) - (b.id || 0));
+    // Sort by id (timestamp) descending - newest first
+    results.sort((a, b) => (b.id || 0) - (a.id || 0));
 
     return NextResponse.json(results);
-  } catch {
+  } catch (error) {
+    console.error('GET error:', error);
     return NextResponse.json([]);
   }
 }

@@ -188,6 +188,10 @@ class RobustGeminiModel(BaseReportingModel):
         self.model_name = model_name
         genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
         
+        # 🔥 NEW: Store captured data for DeepEval metrics
+        self.captured_statements = []
+        self.captured_verdicts = []
+        
         # 🔥 FIX: Add max_output_tokens and stronger repetition penalty
         self.generation_config = {
             "temperature": 0.1,
@@ -283,6 +287,43 @@ class RobustGeminiModel(BaseReportingModel):
         
         return '\n'.join(unique_lines)
     
+    def _fix_reason_response(self, text: str, prompt: str) -> str:
+        """Fix responses where DeepEval expects 'reason' but gets 'statements'"""
+        try:
+            # Check if this is a reason generation request
+            is_reason_request = 'reason for the score' in prompt.lower() or 'concise reason' in prompt.lower()
+            
+            if is_reason_request:
+                parsed = json.loads(text)
+                
+                # If response has 'statements' but prompt expects 'reason'
+                if 'statements' in parsed and 'reason' not in parsed:
+                    print(f"{Colors.WARNING}⚠️ Converting 'statements' array to 'reason' string{Colors.ENDC}")
+                    
+                    # Combine statements into a single reason string
+                    statements = parsed.get('statements', [])
+                    combined_reason = ' '.join(statements) if statements else "Score reflects answer quality."
+                    
+                    return json.dumps({"reason": combined_reason}, indent=2)
+            
+            return text
+            
+        except json.JSONDecodeError:
+            return text
+        except Exception as e:
+            print(f"{Colors.WARNING}⚠️ Reason fix failed: {e}{Colors.ENDC}")
+            return text
+    
+    def _capture_response_data(self, parsed: dict):
+        """Capture statements and verdicts from parsed JSON for later retrieval"""
+        if 'statements' in parsed:
+            self.captured_statements = parsed['statements']
+            print(f"{Colors.OKCYAN}📦 Captured {len(self.captured_statements)} statements{Colors.ENDC}")
+        
+        if 'verdicts' in parsed:
+            self.captured_verdicts = parsed['verdicts']
+            print(f"{Colors.OKCYAN}📦 Captured {len(self.captured_verdicts)} verdicts{Colors.ENDC}")
+    
     def _manual_statement_extraction(self, text: str) -> str:
         """Fallback: Extract statements manually when JSON parsing fails"""
         try:
@@ -374,10 +415,19 @@ class RobustGeminiModel(BaseReportingModel):
             
             clean_text = self._sanitize_json_response(response.text)
             
+            # 🔥 NEW: Fix reason/statements mismatch BEFORE validation
+            clean_text = self._fix_reason_response(clean_text, prompt)
+            
             # 🔥 FIX: Validate JSON before returning
             try:
                 parsed = json.loads(clean_text)
-                print(f"{Colors.OKGREEN}✅ Valid JSON generated with {len(parsed.get('statements', []))} statements{Colors.ENDC}")
+                key = 'reason' if 'reason' in parsed else 'statements' if 'statements' in parsed else 'verdicts'
+                count = len(parsed.get(key, [])) if isinstance(parsed.get(key), list) else 1
+                print(f"{Colors.OKGREEN}✅ Valid JSON generated with {count} {key}{Colors.ENDC}")
+                
+                # 🔥 NEW: CAPTURE statements and verdicts for later retrieval
+                self._capture_response_data(parsed)
+                
             except json.JSONDecodeError as e:
                 print(f"{Colors.FAIL}❌ Invalid JSON: {e}{Colors.ENDC}")
                 print(f"Problematic JSON: {clean_text[:500]}")
@@ -385,6 +435,13 @@ class RobustGeminiModel(BaseReportingModel):
                 # 🔥 FALLBACK: Try to manually extract statements from broken JSON
                 print(f"{Colors.WARNING}⚠️ Attempting manual statement extraction...{Colors.ENDC}")
                 clean_text = self._manual_statement_extraction(response.text)
+                
+                # Try to capture from fallback too
+                try:
+                    parsed = json.loads(clean_text)
+                    self._capture_response_data(parsed)
+                except:
+                    pass
             
             self.last_response = clean_text 
             self.save_report("./data/results/gemini_reports", "gemini")
@@ -398,10 +455,16 @@ class RobustGeminiModel(BaseReportingModel):
     def _enhance_prompt_for_json(self, prompt: str) -> str:
         """Enhanced prompt to prevent repetition and code snippets"""
         if "json" in prompt.lower() or "{" in prompt:
-            # 🔥 FIX: Detect if prompt expects verdicts or statements
+            # 🔥 FIX: Detect response type
             expects_verdicts = '"verdicts"' in prompt or 'verdict' in prompt.lower()
+            expects_reason = 'reason for the score' in prompt.lower() or 'concise reason' in prompt.lower()
             
-            if expects_verdicts:
+            if expects_reason:
+                example = '''{
+    "reason": "The answer is partially relevant because it addresses the main topic but misses key details."
+}'''
+                key_instruction = "Return JSON with single 'reason' key containing a string"
+            elif expects_verdicts:
                 example = '''{
     "verdicts": [
         {"verdict": "yes", "reason": "Relevant to the input"},
@@ -438,7 +501,7 @@ Example of CORRECT output:
 
 Example of INCORRECT output (DO NOT DO THIS):
 {{
-    "statements": [  // ❌ Wrong key if expecting verdicts
+    "statements": [  // ❌ Wrong key if expecting verdicts or reason
         "Same statement repeated again",
         "Same statement repeated again"
     ]
@@ -560,6 +623,14 @@ def generate_build_result(sut_instance, judge_instance, metrics: List[Any], outp
         
         print(f"\n{Colors.OKCYAN}🔍 DEBUG - Judge Response Length: {len(judge_data.get('response', ''))}{Colors.ENDC}")
         
+        # 🔥 NEW: Retrieve captured data from judge instance
+        captured_statements = getattr(judge_instance, 'captured_statements', [])
+        captured_verdicts = getattr(judge_instance, 'captured_verdicts', [])
+        
+        print(f"{Colors.OKCYAN}🔍 DEBUG - Judge Captured Data:{Colors.ENDC}")
+        print(f"  📝 Captured Statements: {len(captured_statements)}")
+        print(f"  ⚖️  Captured Verdicts: {len(captured_verdicts)}")
+        
         # 2. Collect DeepEval Analytics with ENHANCED DEBUGGING
         eval_results = []
         overall_passed = True
@@ -567,45 +638,85 @@ def generate_build_result(sut_instance, judge_instance, metrics: List[Any], outp
         for i, m in enumerate(metrics):
             print(f"\n{Colors.OKCYAN}🔍 DEBUG - Metric #{i}: {m.__class__.__name__}{Colors.ENDC}")
             
-            score = getattr(m, 'score', 0)
+            # 🔥 CRITICAL FIX: Get DeepEval's actual calculated score
+            # DeepEval stores the score after evaluation completes
+            actual_score = getattr(m, 'score', None)
             threshold = getattr(m, 'threshold', 0)
+            reason = getattr(m, 'reason', None)
+            success = getattr(m, 'success', None)
             
-            # 🔥 DEBUG: Capture statements
-            statements = getattr(m, 'statements', [])
-            print(f"  📝 Statements found: {len(statements)}")
-            if statements:
-                print(f"  First statement: {statements[0][:100] if statements else 'N/A'}")
+            # 🔥 If score is None, DeepEval hasn't finished calculating yet
+            if actual_score is None:
+                print(f"  {Colors.WARNING}⚠️ Score not yet calculated by DeepEval{Colors.ENDC}")
+                # 🔥 FALLBACK: Calculate from verdicts only as temporary measure
+                if captured_verdicts:
+                    yes_count = sum(1 for v in captured_verdicts if v.get('verdict') == 'yes')
+                    idk_count = sum(1 for v in captured_verdicts if v.get('verdict') == 'idk')
+                    total_count = len(captured_verdicts)
+                    if total_count > 0:
+                        # AnswerRelevancy: (yes + idk) / total (idk is not penalized)
+                        actual_score = (yes_count + idk_count) / total_count
+                        print(f"  {Colors.WARNING}⚠️ Using fallback calculation: ({yes_count} yes + {idk_count} idk) / {total_count} = {actual_score:.2f}{Colors.ENDC}")
+                else:
+                    actual_score = 0.0
             else:
-                print(f"  {Colors.WARNING}⚠️ NO STATEMENTS FOUND{Colors.ENDC}")
-                # Check if statements is None vs empty list
-                if not hasattr(m, 'statements'):
-                    print(f"  {Colors.FAIL}❌ Metric has no 'statements' attribute{Colors.ENDC}")
-
-            # 🔥 DEBUG: Capture verdicts
-            verdicts = []
-            raw_verdicts = getattr(m, 'verdicts', [])
-            print(f"  ⚖️  Verdicts found: {len(raw_verdicts)}")
+                print(f"  {Colors.OKGREEN}✅ Using DeepEval's calculated score: {actual_score:.2f}{Colors.ENDC}")
             
-            if not raw_verdicts:
-                print(f"  {Colors.WARNING}⚠️ NO VERDICTS FOUND{Colors.ENDC}")
-                # Check if verdicts is None vs empty list
-                if not hasattr(m, 'verdicts'):
-                    print(f"  {Colors.FAIL}❌ Metric has no 'verdicts' attribute{Colors.ENDC}")
+            actual_score = float(actual_score) if actual_score is not None else 0.0
             
-            for v in raw_verdicts:
-                verdict_data = {
-                    "verdict": getattr(v, 'verdict', 'N/A'),
-                    "reason": getattr(v, 'reason', 'N/A')
-                }
-                verdicts.append(verdict_data)
-                print(f"    - {verdict_data['verdict']}: {verdict_data['reason'][:50]}")
+            # 🔥 FIX: Try metric attributes first, then fall back to captured data
+            statements = getattr(m, 'statements', None)
+            if statements is None or (isinstance(statements, list) and len(statements) == 0):
+                statements = captured_statements
+                print(f"  📝 Using captured statements: {len(statements)}")
+            else:
+                print(f"  📝 Statements from metric: {len(statements)}")
+            
+            if statements and len(statements) > 0:
+                print(f"  First statement: {statements[0][:100]}")
 
-            # Calculate pass/fail
-            actual_score = float(score) if score is not None else 0.0
+            # 🔥 FIX: Try metric attributes first, then fall back to captured data
+            raw_verdicts = getattr(m, 'verdicts', None)
+            if raw_verdicts is None or (isinstance(raw_verdicts, list) and len(raw_verdicts) == 0):
+                # Use captured verdicts
+                verdicts = []
+                for v in captured_verdicts:
+                    if isinstance(v, dict):
+                        verdicts.append({
+                            "verdict": v.get('verdict', 'N/A'),
+                            "reason": v.get('reason', 'N/A')
+                        })
+                print(f"  ⚖️  Using captured verdicts: {len(verdicts)}")
+            else:
+                # Use metric verdicts
+                verdicts = []
+                for v in raw_verdicts:
+                    verdict_data = {
+                        "verdict": getattr(v, 'verdict', 'N/A'),
+                        "reason": getattr(v, 'reason', 'N/A')
+                    }
+                    verdicts.append(verdict_data)
+                print(f"  ⚖️  Verdicts from metric: {len(verdicts)}")
+            
+            if verdicts and len(verdicts) > 0:
+                for v in verdicts[:3]:  # Show first 3
+                    print(f"    - {v['verdict']}: {v['reason'][:50]}")
+
+            # 🔥 FIX: Calculate pass/fail with proper score
             passed = actual_score >= float(threshold)
             if not passed: overall_passed = False
             
+            # 🔥 FIX: Use DeepEval's reason if available, otherwise construct
+            if reason is None:
+                # Try to construct reason from verdicts
+                irrelevant_reasons = [v['reason'] for v in verdicts if v['verdict'] == 'no']
+                if irrelevant_reasons:
+                    reason = f"Score is {actual_score:.2f} due to irrelevant statements: {'; '.join(irrelevant_reasons[:2])}"
+                else:
+                    reason = f"Score is {actual_score:.2f}"
+            
             print(f"  📊 Score: {actual_score:.2f} / {threshold} → {'✅ PASS' if passed else '❌ FAIL'}")
+            print(f"  📝 Reason: {reason[:100] if reason else 'N/A'}")
             
             # 🔥 NEW: Show metric error if present
             if hasattr(m, 'error') and m.error:
@@ -614,12 +725,13 @@ def generate_build_result(sut_instance, judge_instance, metrics: List[Any], outp
             eval_results.append({
                 "metric_name": m.__class__.__name__,
                 "score": actual_score,
-                "reason": getattr(m, 'reason', "N/A"),
+                "reason": reason,
                 "passed": passed,
                 "threshold": threshold,
+                "success": success,
                 "error": getattr(m, 'error', None),
                 "pipeline_flow": {
-                    "judge_statements": statements,
+                    "judge_statements": list(statements) if statements else [],
                     "judge_verdicts": verdicts
                 }
             })

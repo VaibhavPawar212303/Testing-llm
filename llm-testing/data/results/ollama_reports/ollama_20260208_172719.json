@@ -1,0 +1,883 @@
+{
+  "timestamp": "20260208_172719",
+  "model": "llama3.2:1b",
+  "endpoint": "https://f3b3-165-99-227-20.ngrok-free.app/playwright",
+  "generation_time": {
+    "start": "2026-02-08T17:26:30.698296",
+    "end": "2026-02-08T17:27:19.864771",
+    "duration_seconds": 49.166475
+  },
+  "prompt": "Explain this error: Timeout 30000ms exceeded while waiting for selector 'text=Welcome'",
+  "response": "**Summary:** The test failed to verify that the login button is enabled on a webpage.\n\n**ROOT_CAUSE:** Locator-based assertion for `getByRole(\"edit\")` fails because it does not specify any locator strategy, resulting in undefined behavior.\n\n**RECOMMENDATION:** Use either `role` or `text` locator strategy for `getByRole(\"edit\")` to enable the login button. Here's an example of using `role` strategy:\n\n```javascript\nconst loginButton = await page.locator.getByRole('edit').click();\n```\n\nIf you want to verify that the login button is enabled, you can use `expect` statement with a helper function like this:\n\n```javascript\nasync function isLoginButtonEnabled() {\n    const loginButton = await page.locator.getByRole('edit');\n    return expect(loginButton).toBeEnabled();\n}\n\nisLoginButtonEnabled().then(isEnabled => {\n    if (isEnabled) {\n        console.log(\"Login button is enabled\");\n    } else {\n        console.log(\"Login button is not enabled\");\n    }\n});\n```\n\n**SEVERITY:** High",
+  "metrics": {
+    "duration_ms": 48444,
+    "duration_seconds": 48.44,
+    "cpu": {
+      "avg_usage_percent": 98.66,
+      "peak_usage_percent": 100,
+      "start_usage": 17.35,
+      "end_usage": 100
+    },
+    "ram": {
+      "avg_used_gb": 10.45,
+      "peak_used_gb": 11.19,
+      "start_used_gb": 8.36,
+      "end_used_gb": 10.78,
+      "total_gb": 15.86
+    },
+    "snapshots": [
+      {
+        "timestamp": 1770551793884,
+        "cpu": {
+          "usage": 17.35,
+          "cores": 8
+        },
+        "ram": {
+          "used": 8979611648,
+          "total": 17031356416,
+          "percentage": 52.72
+        }
+      },
+      {
+        "timestamp": 1770551796796,
+        "cpu": {
+          "usage": 88.67,
+          "cores": 8
+        },
+        "ram": {
+          "used": 9214676992,
+          "total": 17031356416,
+          "percentage": 54.1
+        }
+      },
+      {
+        "timestamp": 1770551797872,
+        "cpu": {
+          "usage": 98.93,
+          "cores": 8
+        },
+        "ram": {
+          "used": 9233842176,
+          "total": 17031356416,
+          "percentage": 54.22
+        }
+      },
+      {
+        "timestamp": 1770551798898,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 9267662848,
+          "total": 17031356416,
+          "percentage": 54.42
+        }
+      },
+      {
+        "timestamp": 1770551799717,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 9355509760,
+          "total": 17031356416,
+          "percentage": 54.93
+        }
+      },
+      {
+        "timestamp": 1770551799883,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 9398767616,
+          "total": 17031356416,
+          "percentage": 55.19
+        }
+      },
+      {
+        "timestamp": 1770551801027,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 9443020800,
+          "total": 17031356416,
+          "percentage": 55.44
+        }
+      },
+      {
+        "timestamp": 1770551801505,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 9492045824,
+          "total": 17031356416,
+          "percentage": 55.73
+        }
+      },
+      {
+        "timestamp": 1770551802093,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 9477345280,
+          "total": 17031356416,
+          "percentage": 55.65
+        }
+      },
+      {
+        "timestamp": 1770551803231,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 9517236224,
+          "total": 17031356416,
+          "percentage": 55.88
+        }
+      },
+      {
+        "timestamp": 1770551803727,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 9529827328,
+          "total": 17031356416,
+          "percentage": 55.95
+        }
+      },
+      {
+        "timestamp": 1770551804838,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 9944006656,
+          "total": 17031356416,
+          "percentage": 58.39
+        }
+      },
+      {
+        "timestamp": 1770551805146,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 10531803136,
+          "total": 17031356416,
+          "percentage": 61.84
+        }
+      },
+      {
+        "timestamp": 1770551807716,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11465359360,
+          "total": 17031356416,
+          "percentage": 67.32
+        }
+      },
+      {
+        "timestamp": 1770551810377,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11350958080,
+          "total": 17031356416,
+          "percentage": 66.65
+        }
+      },
+      {
+        "timestamp": 1770551811594,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11434565632,
+          "total": 17031356416,
+          "percentage": 67.14
+        }
+      },
+      {
+        "timestamp": 1770551812927,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11503681536,
+          "total": 17031356416,
+          "percentage": 67.54
+        }
+      },
+      {
+        "timestamp": 1770551813945,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11474984960,
+          "total": 17031356416,
+          "percentage": 67.38
+        }
+      },
+      {
+        "timestamp": 1770551814532,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11453292544,
+          "total": 17031356416,
+          "percentage": 67.25
+        }
+      },
+      {
+        "timestamp": 1770551814835,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11524694016,
+          "total": 17031356416,
+          "percentage": 67.67
+        }
+      },
+      {
+        "timestamp": 1770551815155,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11512320000,
+          "total": 17031356416,
+          "percentage": 67.59
+        }
+      },
+      {
+        "timestamp": 1770551815467,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11504971776,
+          "total": 17031356416,
+          "percentage": 67.55
+        }
+      },
+      {
+        "timestamp": 1770551815880,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11553271808,
+          "total": 17031356416,
+          "percentage": 67.84
+        }
+      },
+      {
+        "timestamp": 1770551816198,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11714334720,
+          "total": 17031356416,
+          "percentage": 68.78
+        }
+      },
+      {
+        "timestamp": 1770551816401,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11687817216,
+          "total": 17031356416,
+          "percentage": 68.63
+        }
+      },
+      {
+        "timestamp": 1770551816807,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11600449536,
+          "total": 17031356416,
+          "percentage": 68.11
+        }
+      },
+      {
+        "timestamp": 1770551816934,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11744530432,
+          "total": 17031356416,
+          "percentage": 68.96
+        }
+      },
+      {
+        "timestamp": 1770551817065,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11658272768,
+          "total": 17031356416,
+          "percentage": 68.45
+        }
+      },
+      {
+        "timestamp": 1770551817393,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11649282048,
+          "total": 17031356416,
+          "percentage": 68.4
+        }
+      },
+      {
+        "timestamp": 1770551817547,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11840331776,
+          "total": 17031356416,
+          "percentage": 69.52
+        }
+      },
+      {
+        "timestamp": 1770551817645,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11800887296,
+          "total": 17031356416,
+          "percentage": 69.29
+        }
+      },
+      {
+        "timestamp": 1770551818377,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11950387200,
+          "total": 17031356416,
+          "percentage": 70.17
+        }
+      },
+      {
+        "timestamp": 1770551818752,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 12016676864,
+          "total": 17031356416,
+          "percentage": 70.56
+        }
+      },
+      {
+        "timestamp": 1770551819446,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11805462528,
+          "total": 17031356416,
+          "percentage": 69.32
+        }
+      },
+      {
+        "timestamp": 1770551820441,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11731214336,
+          "total": 17031356416,
+          "percentage": 68.88
+        }
+      },
+      {
+        "timestamp": 1770551822378,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11589898240,
+          "total": 17031356416,
+          "percentage": 68.05
+        }
+      },
+      {
+        "timestamp": 1770551822831,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11558408192,
+          "total": 17031356416,
+          "percentage": 67.87
+        }
+      },
+      {
+        "timestamp": 1770551823473,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11488534528,
+          "total": 17031356416,
+          "percentage": 67.46
+        }
+      },
+      {
+        "timestamp": 1770551823773,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11518509056,
+          "total": 17031356416,
+          "percentage": 67.63
+        }
+      },
+      {
+        "timestamp": 1770551825113,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11471499264,
+          "total": 17031356416,
+          "percentage": 67.36
+        }
+      },
+      {
+        "timestamp": 1770551825450,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11478638592,
+          "total": 17031356416,
+          "percentage": 67.4
+        }
+      },
+      {
+        "timestamp": 1770551826515,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11494080512,
+          "total": 17031356416,
+          "percentage": 67.49
+        }
+      },
+      {
+        "timestamp": 1770551827400,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11551731712,
+          "total": 17031356416,
+          "percentage": 67.83
+        }
+      },
+      {
+        "timestamp": 1770551827966,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11590524928,
+          "total": 17031356416,
+          "percentage": 68.05
+        }
+      },
+      {
+        "timestamp": 1770551828218,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11635462144,
+          "total": 17031356416,
+          "percentage": 68.32
+        }
+      },
+      {
+        "timestamp": 1770551828793,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11569438720,
+          "total": 17031356416,
+          "percentage": 67.93
+        }
+      },
+      {
+        "timestamp": 1770551829209,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11571400704,
+          "total": 17031356416,
+          "percentage": 67.94
+        }
+      },
+      {
+        "timestamp": 1770551830188,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11627618304,
+          "total": 17031356416,
+          "percentage": 68.27
+        }
+      },
+      {
+        "timestamp": 1770551830553,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11612250112,
+          "total": 17031356416,
+          "percentage": 68.18
+        }
+      },
+      {
+        "timestamp": 1770551831536,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11646980096,
+          "total": 17031356416,
+          "percentage": 68.39
+        }
+      },
+      {
+        "timestamp": 1770551831942,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11661877248,
+          "total": 17031356416,
+          "percentage": 68.47
+        }
+      },
+      {
+        "timestamp": 1770551832418,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11632230400,
+          "total": 17031356416,
+          "percentage": 68.3
+        }
+      },
+      {
+        "timestamp": 1770551832880,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11643097088,
+          "total": 17031356416,
+          "percentage": 68.36
+        }
+      },
+      {
+        "timestamp": 1770551833641,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11674025984,
+          "total": 17031356416,
+          "percentage": 68.54
+        }
+      },
+      {
+        "timestamp": 1770551834364,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11641036800,
+          "total": 17031356416,
+          "percentage": 68.35
+        }
+      },
+      {
+        "timestamp": 1770551835556,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11638161408,
+          "total": 17031356416,
+          "percentage": 68.33
+        }
+      },
+      {
+        "timestamp": 1770551835919,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11653111808,
+          "total": 17031356416,
+          "percentage": 68.42
+        }
+      },
+      {
+        "timestamp": 1770551836318,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11594113024,
+          "total": 17031356416,
+          "percentage": 68.08
+        }
+      },
+      {
+        "timestamp": 1770551837027,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11577929728,
+          "total": 17031356416,
+          "percentage": 67.98
+        }
+      },
+      {
+        "timestamp": 1770551837697,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11570835456,
+          "total": 17031356416,
+          "percentage": 67.94
+        }
+      },
+      {
+        "timestamp": 1770551838131,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11525746688,
+          "total": 17031356416,
+          "percentage": 67.67
+        }
+      },
+      {
+        "timestamp": 1770551838505,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11562938368,
+          "total": 17031356416,
+          "percentage": 67.89
+        }
+      },
+      {
+        "timestamp": 1770551838820,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11527925760,
+          "total": 17031356416,
+          "percentage": 67.69
+        }
+      },
+      {
+        "timestamp": 1770551839123,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11546898432,
+          "total": 17031356416,
+          "percentage": 67.8
+        }
+      },
+      {
+        "timestamp": 1770551839601,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11607986176,
+          "total": 17031356416,
+          "percentage": 68.16
+        }
+      },
+      {
+        "timestamp": 1770551839696,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11649945600,
+          "total": 17031356416,
+          "percentage": 68.4
+        }
+      },
+      {
+        "timestamp": 1770551840004,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11634573312,
+          "total": 17031356416,
+          "percentage": 68.31
+        }
+      },
+      {
+        "timestamp": 1770551840084,
+        "cpu": {
+          "usage": 99.74,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11617198080,
+          "total": 17031356416,
+          "percentage": 68.21
+        }
+      },
+      {
+        "timestamp": 1770551840289,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11594792960,
+          "total": 17031356416,
+          "percentage": 68.08
+        }
+      },
+      {
+        "timestamp": 1770551840422,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11567828992,
+          "total": 17031356416,
+          "percentage": 67.92
+        }
+      },
+      {
+        "timestamp": 1770551840458,
+        "cpu": {
+          "usage": 100,
+          "cores": 8
+        },
+        "ram": {
+          "used": 11573420032,
+          "total": 17031356416,
+          "percentage": 67.95
+        }
+      }
+    ]
+  }
+}
