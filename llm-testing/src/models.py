@@ -28,6 +28,7 @@ class BaseReportingModel(DeepEvalBaseLLM):
         self.last_prompt = ""
         self.last_response = ""
         self.last_metrics = {}
+        self.last_thought_process = ""
         self.generation_start_time = None
         self.generation_end_time = None
     
@@ -42,7 +43,7 @@ class BaseReportingModel(DeepEvalBaseLLM):
             "prompt": self.last_prompt,
             "response": self.last_response,
             "metrics": self.last_metrics,
-            "thought_process": getattr(self, 'last_thought_process', "")
+            "thought_process": self.last_thought_process
         }
 
     def save_report(self, report_dir: str, prefix: str = "llm_analysis"):
@@ -133,19 +134,33 @@ class OllamaModel(BaseReportingModel):
         try:
             response = requests.post(url, json=payload, headers=headers, timeout=600)
             self.generation_end_time = datetime.now()
-            if response.status_code != 200: return f"Ollama Error: {response.status_code}"
+            if response.status_code != 200: 
+                print(f"{Colors.FAIL}❌ Ollama Error {response.status_code}: {response.text}{Colors.ENDC}")
+                return f"Ollama Error: {response.status_code}"
+            
             res_json = response.json()
+            
+            # DEBUG: Print raw response
+            print(f"\n{Colors.OKCYAN}🔍 DEBUG - Ollama Raw Response:{Colors.ENDC}")
+            print(json.dumps(res_json, indent=2)[:500])  # First 500 chars
+            
             if 'metrics' in res_json:
                 self.last_metrics = res_json['metrics']
                 self._display_metrics()
+            
             content = self._extract_content(res_json)
             if content:
                 self.last_response = content
+                print(f"\n{Colors.OKGREEN}✅ Ollama Response Length: {len(content)} chars{Colors.ENDC}")
                 self.save_report("./data/results/ollama_reports", "ollama")
                 return content
+            
+            print(f"{Colors.WARNING}⚠️ No content in Ollama response{Colors.ENDC}")
             return "No content in response"
+            
         except Exception as e:
             self.generation_end_time = datetime.now()
+            print(f"{Colors.FAIL}❌ Ollama Exception: {str(e)}{Colors.ENDC}")
             return f"Ollama Error: {str(e)}"
     
     def _extract_content(self, response: Dict[str, Any]) -> Optional[str]:
@@ -172,37 +187,262 @@ class RobustGeminiModel(BaseReportingModel):
         super().__init__()
         self.model_name = model_name
         genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-        self.generation_config = {"temperature": 0.1, "top_p": 0.95, "top_k": 40}
-        self.model = genai.GenerativeModel(model_name=model_name, generation_config=self.generation_config)
+        
+        # 🔥 FIX: Add max_output_tokens and stronger repetition penalty
+        self.generation_config = {
+            "temperature": 0.1,
+            "top_p": 0.95,
+            "top_k": 40,
+            "max_output_tokens": 2048,  # Prevent infinite loops
+        }
+        
+        # 🔥 FIX: Add safety settings to prevent blocking
+        self.safety_settings = [
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+        ]
+        
+        self.model = genai.GenerativeModel(
+            model_name=model_name, 
+            generation_config=self.generation_config,
+            safety_settings=self.safety_settings
+        )
 
     def load_model(self): return self.model
     def _get_endpoint(self) -> str: return f"Gemini API: {self.model_name}"
 
     def _sanitize_json_response(self, text: str) -> str:
+        """Enhanced JSON sanitization with repetition detection and quote fixing"""
+        print(f"\n{Colors.OKCYAN}🔍 DEBUG - Raw Gemini Response (first 1000 chars):{Colors.ENDC}")
+        print(text[:1000])
+        
+        # 🔥 FIX: Detect infinite repetition
+        if self._detect_repetition(text):
+            print(f"{Colors.WARNING}⚠️ DETECTED INFINITE REPETITION - Truncating{Colors.ENDC}")
+            text = self._truncate_repetition(text)
+        
+        # Remove markdown fences
         text = re.sub(r'```json\s*', '', text)
         text = re.sub(r'```\s*', '', text)
-        start = text.find('{'); end = text.rfind('}')
-        if start != -1 and end != -1: text = text[start:end+1]
+        
+        # Extract JSON object
+        start = text.find('{')
+        end = text.rfind('}')
+        if start != -1 and end != -1:
+            text = text[start:end+1]
+        
+        # 🔥 CRITICAL FIX: Replace problematic patterns in JSON strings
+        # Fix HTML/code attributes that break JSON: role="button" -> role='button'
+        text = re.sub(r'(\w+)="([^"]*)"', r"\1='\2'", text)
+        text = re.sub(r'(\w+)=\'([^\']*)\'', r"\1='\2'", text)
+        
+        # Fix backticks in JSON strings (convert to single quotes)
+        text = text.replace('`', "'")
+        
+        # 🔥 NEW FIX: Gemini sometimes uses wrong key name
+        # If prompt expects "verdicts" but response has "statements", fix it
+        if '"verdict":' in text and '"statements":' in text and '"verdicts":' not in text:
+            print(f"{Colors.WARNING}⚠️ Fixing key: 'statements' -> 'verdicts'{Colors.ENDC}")
+            # Replace the outer "statements" key with "verdicts"
+            text = re.sub(r'"statements"\s*:', '"verdicts":', text, count=1)
+        
+        print(f"\n{Colors.OKGREEN}✅ Sanitized JSON (first 500 chars):{Colors.ENDC}")
+        print(text[:500])
+        
         return text.strip()
+    
+    def _detect_repetition(self, text: str, threshold: int = 10) -> bool:
+        """Detect if a phrase repeats more than threshold times"""
+        # Look for patterns like '"The locator name should be \'roleContains\'."'
+        lines = text.split('\n')
+        if len(lines) < 10:
+            return False
+        
+        # Check if same line repeats
+        from collections import Counter
+        line_counts = Counter(lines)
+        max_count = max(line_counts.values()) if line_counts else 0
+        return max_count > threshold
+    
+    def _truncate_repetition(self, text: str) -> str:
+        """Keep only unique statements from the beginning"""
+        lines = text.split('\n')
+        seen = set()
+        unique_lines = []
+        
+        for line in lines:
+            if line.strip() and line.strip() not in seen:
+                unique_lines.append(line)
+                seen.add(line.strip())
+            
+            # Stop after 20 unique lines
+            if len(unique_lines) >= 20:
+                break
+        
+        return '\n'.join(unique_lines)
+    
+    def _manual_statement_extraction(self, text: str) -> str:
+        """Fallback: Extract statements manually when JSON parsing fails"""
+        try:
+            # Find all lines that look like statements (quoted strings)
+            statement_pattern = r'"([^"]{10,200})"'  # Strings between 10-200 chars
+            matches = re.findall(statement_pattern, text)
+            
+            # Filter out keys and keep only values that look like statements
+            statements = [
+                m for m in matches 
+                if not m.endswith(':') 
+                and not m in ['statements', 'statement', 'text', 'verdict', 'verdicts', 'reason']
+                and len(m.split()) > 3  # At least 4 words
+            ]
+            
+            # Remove duplicates while preserving order
+            seen = set()
+            unique_statements = []
+            for s in statements:
+                if s not in seen and len(unique_statements) < 10:
+                    unique_statements.append(s)
+                    seen.add(s)
+            
+            # 🔥 FIX: Detect if this is a verdicts response (has "verdict" key)
+            is_verdicts_response = '"verdict"' in text or "'verdict'" in text
+            
+            if is_verdicts_response:
+                # Extract verdicts format
+                result = self._extract_verdicts_manually(text)
+            else:
+                # Build standard statements JSON
+                result = {
+                    "statements": unique_statements
+                }
+            
+            print(f"{Colors.OKGREEN}✅ Manually extracted {len(unique_statements)} items{Colors.ENDC}")
+            return json.dumps(result, indent=4)
+            
+        except Exception as e:
+            print(f"{Colors.FAIL}❌ Manual extraction failed: {e}{Colors.ENDC}")
+            # Return appropriate empty structure
+            if '"verdict"' in text:
+                return '{"verdicts": []}'
+            return '{"statements": []}'
+    
+    def _extract_verdicts_manually(self, text: str) -> dict:
+        """Extract verdicts from malformed JSON"""
+        try:
+            # Find all verdict patterns
+            verdict_pattern = r'"verdict":\s*"(yes|no|idk)"'
+            reason_pattern = r'"reason":\s*"([^"]+)"'
+            
+            verdicts_matches = re.findall(verdict_pattern, text, re.IGNORECASE)
+            reasons_matches = re.findall(reason_pattern, text)
+            
+            # Pair them up
+            verdicts = []
+            for i, verdict in enumerate(verdicts_matches):
+                reason = reasons_matches[i] if i < len(reasons_matches) else "N/A"
+                verdicts.append({
+                    "verdict": verdict.lower(),
+                    "reason": reason
+                })
+            
+            # 🔥 CRITICAL: Use "verdicts" key, not "statements"
+            return {"verdicts": verdicts}
+            
+        except Exception as e:
+            print(f"{Colors.WARNING}⚠️ Verdict extraction failed: {e}{Colors.ENDC}")
+            return {"verdicts": []}
 
     def generate(self, prompt: str) -> str:
         self.last_prompt = prompt
         self.generation_start_time = datetime.now()
         enhanced_prompt = self._enhance_prompt_for_json(prompt)
+        
+        print(f"\n{Colors.OKCYAN}🔍 DEBUG - Gemini Prompt:{Colors.ENDC}")
+        print(enhanced_prompt[:300])
+        
         try:
             response = self.model.generate_content(enhanced_prompt)
             self.generation_end_time = datetime.now()
-            sanitized_text = self._sanitize_json_response(response.text)
-            self.last_response = sanitized_text
+            
+            # 🔥 FIX: Check if response was blocked
+            if not response.text:
+                print(f"{Colors.FAIL}❌ Gemini response blocked or empty{Colors.ENDC}")
+                print(f"Candidates: {response.candidates}")
+                return "Error: Response blocked by safety filters"
+            
+            clean_text = self._sanitize_json_response(response.text)
+            
+            # 🔥 FIX: Validate JSON before returning
+            try:
+                parsed = json.loads(clean_text)
+                print(f"{Colors.OKGREEN}✅ Valid JSON generated with {len(parsed.get('statements', []))} statements{Colors.ENDC}")
+            except json.JSONDecodeError as e:
+                print(f"{Colors.FAIL}❌ Invalid JSON: {e}{Colors.ENDC}")
+                print(f"Problematic JSON: {clean_text[:500]}")
+                
+                # 🔥 FALLBACK: Try to manually extract statements from broken JSON
+                print(f"{Colors.WARNING}⚠️ Attempting manual statement extraction...{Colors.ENDC}")
+                clean_text = self._manual_statement_extraction(response.text)
+            
+            self.last_response = clean_text 
             self.save_report("./data/results/gemini_reports", "gemini")
-            return self.last_response
+            return clean_text 
+            
         except Exception as e:
             self.generation_end_time = datetime.now()
+            print(f"{Colors.FAIL}❌ Gemini Exception: {str(e)}{Colors.ENDC}")
             return f"Gemini Error: {str(e)}"
     
     def _enhance_prompt_for_json(self, prompt: str) -> str:
+        """Enhanced prompt to prevent repetition and code snippets"""
         if "json" in prompt.lower() or "{" in prompt:
-            return f"{prompt}\n\nCRITICAL: Return ONLY valid JSON. No markdown."
+            # 🔥 FIX: Detect if prompt expects verdicts or statements
+            expects_verdicts = '"verdicts"' in prompt or 'verdict' in prompt.lower()
+            
+            if expects_verdicts:
+                example = '''{
+    "verdicts": [
+        {"verdict": "yes", "reason": "Relevant to the input"},
+        {"verdict": "no", "reason": "Not related"},
+        {"verdict": "idk", "reason": "Unclear"}
+    ]
+}'''
+                key_instruction = "Return JSON with 'verdicts' key (NOT 'statements')"
+            else:
+                example = '''{
+    "statements": [
+        "Statement 1 about X",
+        "Statement 2 about Y",
+        "Statement 3 about Z"
+    ]
+}'''
+                key_instruction = "Return JSON with 'statements' key"
+            
+            # 🔥 FIX: Add explicit instructions to prevent repetition AND code snippets
+            return f"""{prompt}
+
+**CRITICAL INSTRUCTIONS:**
+1. {key_instruction}
+2. Return ONLY valid JSON - no markdown, no explanations
+3. Each item should be UNIQUE - DO NOT repeat
+4. Limit to maximum 10 unique items
+5. DO NOT include code snippets, HTML tags, or examples in text
+6. Keep text as plain descriptions only
+7. Use single quotes (') instead of double quotes (") inside text values
+8. If you find yourself repeating, STOP immediately
+
+Example of CORRECT output:
+{example}
+
+Example of INCORRECT output (DO NOT DO THIS):
+{{
+    "statements": [  // ❌ Wrong key if expecting verdicts
+        "Same statement repeated again",
+        "Same statement repeated again"
+    ]
+}}"""
         return prompt
 
     async def a_generate(self, prompt: str) -> str: return self.generate(prompt)
@@ -222,16 +462,22 @@ class MultiAgentSUT(BaseReportingModel):
     def _get_endpoint(self) -> str: return f"{self.base_url}{self.endpoint}"
 
     def generate(self, prompt: str) -> str:
-        self.last_prompt = prompt; self.last_thought_process = ""
+        self.last_prompt = prompt
+        self.last_thought_process = ""
         self.generation_start_time = datetime.now()
         url = f"{self.base_url}{self.endpoint}"
         headers = {"x-api-key": self.api_key, "Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
         payload = {"prompt": prompt, "model": self.model_name, "stream": True}
         full_analysis = ""
+        
         try:
             response = requests.post(url, json=payload, headers=headers, stream=True, timeout=600)
-            if response.status_code != 200: return f"MultiAgent Error: {response.status_code}"
+            if response.status_code != 200: 
+                print(f"{Colors.FAIL}❌ MultiAgent Error {response.status_code}: {response.text}{Colors.ENDC}")
+                return f"MultiAgent Error: {response.status_code}"
+            
             print(f"\n{Colors.OKCYAN}🤖 {self.model_name} generating...{Colors.ENDC}")
+            
             for line in response.iter_lines():
                 if line:
                     try:
@@ -239,12 +485,17 @@ class MultiAgentSUT(BaseReportingModel):
                         if decoded_line.startswith("data: "):
                             json_str = decoded_line.replace("data: ", "").strip()
                             if not json_str or json_str == "[DONE]": continue
+                            
                             data = json.loads(json_str)
+                            
                             if data.get('done'):
-                                if 'metrics' in data: self.last_metrics = data['metrics']
+                                if 'metrics' in data: 
+                                    self.last_metrics = data['metrics']
                                 break
+                            
                             dtype = data.get('type', 'analysis')
                             chunk = data.get('chunk') or data.get('content') or ''
+                            
                             if chunk:
                                 if dtype == 'thought':
                                     self.last_thought_process += chunk
@@ -252,75 +503,155 @@ class MultiAgentSUT(BaseReportingModel):
                                 else:
                                     full_analysis += chunk
                                     print(chunk, end="", flush=True)
-                    except: continue
-            self.generation_end_time = datetime.now(); self.last_response = full_analysis
-            print(f"\n{Colors.OKGREEN}✅ Complete{Colors.ENDC}\n")
-            if self.last_metrics: self._display_metrics()
+                    except json.JSONDecodeError:
+                        continue
+                    except Exception as e:
+                        print(f"\n{Colors.WARNING}⚠️ Stream parse error: {e}{Colors.ENDC}")
+                        continue
+            
+            self.generation_end_time = datetime.now()
+            self.last_response = full_analysis
+            
+            print(f"\n{Colors.OKGREEN}✅ Complete (Length: {len(full_analysis)} chars){Colors.ENDC}\n")
+            
+            if self.last_metrics: 
+                self._display_metrics()
+            
             self.save_report("./data/results/multiagent_reports", "multiagent")
             return full_analysis if full_analysis else "Error: Empty response"
+            
         except Exception as e:
-            self.generation_end_time = datetime.now(); return f"MultiAgent Error: {str(e)}"
+            self.generation_end_time = datetime.now()
+            print(f"{Colors.FAIL}❌ MultiAgent Exception: {str(e)}{Colors.ENDC}")
+            return f"MultiAgent Error: {str(e)}"
     
     def _display_metrics(self):
         if not self.last_metrics: return
         print(f"{Colors.BOLD}--- Performance ---{Colors.ENDC}")
-        if 'duration_ms' in self.last_metrics: print(f"⏱️  {self.last_metrics['duration_ms']/1000:.2f}s")
+        if 'duration_ms' in self.last_metrics: 
+            print(f"⏱️  {self.last_metrics['duration_ms']/1000:.2f}s")
         print(f"{Colors.BOLD}-------------------{Colors.ENDC}\n")
 
     async def a_generate(self, prompt: str) -> str: return self.generate(prompt)
     def get_model_name(self): return f"MultiAgent: {self.model_name}"
 
+
 # Compatibility Alias
 GeminiModel = RobustGeminiModel
 
+
 # ==========================================
-# 🚀 BUILD RESULT REPORTER (NEW)
+# 🏆 ENHANCED BUILD REPORTER WITH DEBUG
 # ==========================================
 def generate_build_result(sut_instance, judge_instance, metrics: List[Any], output_dir: str = "./data/results/builds"):
     """
-    Combines SUT (Ollama/MultiAgent), Judge (Gemini), and DeepEval metrics 
-    into a single 'Build Result'.
+    AGGREGATOR: Combines SUT, Judge, and DeepEval Pipeline with enhanced debugging.
     """
+    print(f"\n{Colors.OKBLUE}📊 AGGREGATING PIPELINE DATA...{Colors.ENDC}")
+    
     try:
         abs_output_dir = os.path.abspath(output_dir)
         Path(abs_output_dir).mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
-        # Collect SUT and Judge Data
+        # 1. Collect SUT and Judge Data
         sut_data = sut_instance.get_report_data() if hasattr(sut_instance, 'get_report_data') else {}
         judge_data = judge_instance.get_report_data() if hasattr(judge_instance, 'get_report_data') else {}
         
-        # Collect DeepEval Metrics
+        print(f"\n{Colors.OKCYAN}🔍 DEBUG - Judge Response Length: {len(judge_data.get('response', ''))}{Colors.ENDC}")
+        
+        # 2. Collect DeepEval Analytics with ENHANCED DEBUGGING
         eval_results = []
         overall_passed = True
-        for m in metrics:
-            eval_results.append({
-                "metric": m.__class__.__name__,
-                "score": getattr(m, 'score', 0),
-                "reason": getattr(m, 'reason', "N/A"),
-                "passed": getattr(m, 'success', False),
-                "threshold": getattr(m, 'threshold', 0)
-            })
-            if not getattr(m, 'success', False):
-                overall_passed = False
+        
+        for i, m in enumerate(metrics):
+            print(f"\n{Colors.OKCYAN}🔍 DEBUG - Metric #{i}: {m.__class__.__name__}{Colors.ENDC}")
+            
+            score = getattr(m, 'score', 0)
+            threshold = getattr(m, 'threshold', 0)
+            
+            # 🔥 DEBUG: Capture statements
+            statements = getattr(m, 'statements', [])
+            print(f"  📝 Statements found: {len(statements)}")
+            if statements:
+                print(f"  First statement: {statements[0][:100] if statements else 'N/A'}")
+            else:
+                print(f"  {Colors.WARNING}⚠️ NO STATEMENTS FOUND{Colors.ENDC}")
+                # Check if statements is None vs empty list
+                if not hasattr(m, 'statements'):
+                    print(f"  {Colors.FAIL}❌ Metric has no 'statements' attribute{Colors.ENDC}")
 
+            # 🔥 DEBUG: Capture verdicts
+            verdicts = []
+            raw_verdicts = getattr(m, 'verdicts', [])
+            print(f"  ⚖️  Verdicts found: {len(raw_verdicts)}")
+            
+            if not raw_verdicts:
+                print(f"  {Colors.WARNING}⚠️ NO VERDICTS FOUND{Colors.ENDC}")
+                # Check if verdicts is None vs empty list
+                if not hasattr(m, 'verdicts'):
+                    print(f"  {Colors.FAIL}❌ Metric has no 'verdicts' attribute{Colors.ENDC}")
+            
+            for v in raw_verdicts:
+                verdict_data = {
+                    "verdict": getattr(v, 'verdict', 'N/A'),
+                    "reason": getattr(v, 'reason', 'N/A')
+                }
+                verdicts.append(verdict_data)
+                print(f"    - {verdict_data['verdict']}: {verdict_data['reason'][:50]}")
+
+            # Calculate pass/fail
+            actual_score = float(score) if score is not None else 0.0
+            passed = actual_score >= float(threshold)
+            if not passed: overall_passed = False
+            
+            print(f"  📊 Score: {actual_score:.2f} / {threshold} → {'✅ PASS' if passed else '❌ FAIL'}")
+            
+            # 🔥 NEW: Show metric error if present
+            if hasattr(m, 'error') and m.error:
+                print(f"  {Colors.FAIL}❌ Metric Error: {m.error}{Colors.ENDC}")
+
+            eval_results.append({
+                "metric_name": m.__class__.__name__,
+                "score": actual_score,
+                "reason": getattr(m, 'reason', "N/A"),
+                "passed": passed,
+                "threshold": threshold,
+                "error": getattr(m, 'error', None),
+                "pipeline_flow": {
+                    "judge_statements": statements,
+                    "judge_verdicts": verdicts
+                }
+            })
+
+        # 3. Final Build Package
         build_result = {
             "build_id": f"BUILD_{timestamp}",
             "timestamp": timestamp,
             "overall_status": "PASSED" if overall_passed else "FAILED",
-            "sut": sut_data,
-            "judge": judge_data,
-            "deepeval_metrics": eval_results
+            "pipeline": {
+                "student_sut": sut_data,
+                "teacher_judge": judge_data,
+                "deepeval_analytics": eval_results
+            },
+            "environment": {
+                "sut_hardware": sut_instance.last_metrics if hasattr(sut_instance, 'last_metrics') else {},
+                "os": os.name
+            }
         }
 
-        # Save Combined Build Result
+        # 4. Write to Disk
         file_path = os.path.join(abs_output_dir, f"build_result_{timestamp}.json")
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(build_result, f, indent=2, ensure_ascii=False)
         
-        print(f"\n{Colors.HEADER}{Colors.BOLD}🏆 BUILD RESULT GENERATED: {file_path}{Colors.ENDC}")
+        print(f"\n{Colors.HEADER}{Colors.BOLD}🏆 BUILD RESULT: {file_path}{Colors.ENDC}")
+        print(f"{Colors.HEADER}Status: {build_result['overall_status']}{Colors.ENDC}\n")
+        
         return build_result
 
     except Exception as e:
-        print(f"{Colors.FAIL}❌ Failed to generate build result: {e}{Colors.ENDC}")
+        print(f"{Colors.FAIL}❌ Build result generation failed: {e}{Colors.ENDC}")
+        import traceback
+        traceback.print_exc()
         return None
